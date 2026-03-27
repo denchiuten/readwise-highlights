@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Highlight Graph</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1e1e1e; color:#d0d0d0; font-family:'DM Mono',monospace; }
+  body.graph-active { overflow:hidden; }
+
+  /* ── View toggle ── */
+  #view-toggle {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    z-index:50; display:flex; background:rgba(26,26,26,0.95);
+    border:1px solid #333; border-radius:20px; padding:3px;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  }
+  .toggle-btn {
+    padding:7px 16px; border:none; border-radius:17px;
+    background:transparent; color:#666; font-family:'DM Mono',monospace;
+    font-size:11px; cursor:pointer; transition:all 0.2s;
+    letter-spacing:0.3px;
+  }
+  .toggle-btn.active {
+    background:rgba(196,167,231,0.15); color:#c4a7e7;
+  }
+
+  /* ── List view ── */
+  #mobile-view {
+    width:100%; min-height:100vh; max-width:720px;
+    margin:0 auto; padding:16px; padding-bottom:70px;
+  }
+  #mobile-view.hidden { display:none; }
+
+  #mobile-stats {
+    font-size:11px; color:#555; letter-spacing:0.5px;
+    text-transform:uppercase; margin-bottom:16px;
+    display:flex; gap:14px; flex-wrap:wrap;
+  }
+  #mobile-stats .v { color:#c4a7e7; font-weight:500; }
+
+  #mobile-search {
+    width:100%; padding:10px 14px; margin-bottom:16px;
+    background:#252525; border:1px solid #333; border-radius:6px;
+    color:#d0d0d0; font-family:'DM Mono',monospace; font-size:13px;
+    outline:none;
+  }
+  #mobile-search:focus { border-color:rgba(196,167,231,0.5); }
+  #mobile-search::placeholder { color:#555; }
+
+  #filter-bar {
+    display:flex; gap:8px; margin-bottom:16px; overflow-x:auto;
+    scrollbar-width:none; -webkit-overflow-scrolling:touch;
+    padding-bottom:4px;
+  }
+  #filter-bar::-webkit-scrollbar { display:none; }
+  .filter-chip {
+    flex-shrink:0; padding:5px 10px; border-radius:14px;
+    border:1px solid #333; background:transparent;
+    color:#888; font-family:'DM Mono',monospace; font-size:10px;
+    cursor:pointer; transition:all 0.2s; white-space:nowrap;
+  }
+  .filter-chip:active, .filter-chip.active {
+    border-color:rgba(196,167,231,0.5); color:#c4a7e7;
+    background:rgba(196,167,231,0.08);
+  }
+
+  .m-source {
+    margin-bottom:12px; border:1px solid #2a2a2a;
+    border-radius:8px; overflow:hidden; background:#1a1a1a;
+  }
+  .m-source-hdr {
+    display:flex; align-items:center; gap:8px; padding:12px 14px;
+    cursor:pointer; user-select:none; background:#1a1a1a;
+    transition:background 0.2s;
+  }
+  .m-source-hdr:active { background:#222; }
+  .m-source-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .m-source-title {
+    flex:1; font-family:'DM Mono',monospace; font-size:12px;
+    color:#ccc; min-width:0; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  .m-source-count {
+    font-family:'DM Mono',monospace; font-size:10px; color:#444;
+    flex-shrink:0;
+  }
+  .m-source-chevron {
+    color:#444; font-size:14px; flex-shrink:0;
+    transition:transform 0.2s; line-height:1;
+  }
+  .m-source.open .m-source-chevron { transform:rotate(90deg); }
+  .m-source-body { display:none; padding:0 14px 12px; }
+  .m-source.open .m-source-body { display:block; }
+  .m-source-meta {
+    font-size:10px; color:#555; padding:4px 0 10px;
+    letter-spacing:0.3px;
+  }
+
+  .m-card {
+    background:#222; border:1px solid #2a2a2a; border-radius:6px;
+    padding:12px; margin-bottom:8px;
+    transition:border-color 0.3s;
+  }
+  .m-card:last-child { margin-bottom:0; }
+  .m-card-text {
+    font-family:'Crimson Pro',serif; font-size:15px; line-height:1.5;
+    color:#ccc; margin-bottom:6px; white-space:pre-wrap;
+  }
+  .m-card-note {
+    color:#c4a7e7; font-family:'DM Mono',monospace; font-size:11px;
+    border-left:2px solid rgba(196,167,231,0.3); padding-left:10px;
+    margin-bottom:6px; line-height:1.35;
+  }
+  .m-card-link {
+    display:inline-block; color:#9ccfd8; font-size:11px;
+    text-decoration:none; opacity:0.7; margin-bottom:6px;
+  }
+
+  .m-card-conns { margin-top:10px; }
+  .m-conn {
+    background:#1a1a1a; border:1px solid #252525; border-radius:6px;
+    padding:10px 12px; margin-bottom:6px; cursor:pointer;
+    transition:border-color 0.2s;
+  }
+  .m-conn:active { border-color:rgba(196,167,231,0.4); }
+  .m-conn-label {
+    color:#c4a7e7; font-family:'DM Mono',monospace;
+    font-size:11px; font-weight:500; margin-bottom:4px;
+    letter-spacing:0.3px;
+  }
+  .m-conn-why {
+    color:#555; font-family:'DM Mono',monospace;
+    font-size:10px; margin-bottom:6px; line-height:1.3;
+  }
+  .m-conn-src {
+    color:#3a3a3a; font-size:9px; text-transform:uppercase;
+    letter-spacing:0.5px; margin-bottom:2px;
+    font-family:'DM Mono',monospace;
+  }
+  .m-conn-text {
+    font-family:'Crimson Pro',serif; color:#888;
+    font-size:13px; line-height:1.4; font-style:italic;
+  }
+
+  .m-empty {
+    text-align:center; color:#444; font-size:13px;
+    padding:60px 20px;
+  }
+
+  /* ── Graph view ── */
+  #graph-view { display:none; width:100vw; height:100vh; }
+  #graph-view.active { display:block; }
+  #graph-canvas { width:100%; height:100%; }
+
+  #graph-stats {
+    position:fixed; top:14px; left:14px; font-size:10px; color:#555;
+    letter-spacing:0.5px; text-transform:uppercase;
+    display:none; gap:10px; z-index:20;
+  }
+  #graph-stats .v { color:#c4a7e7; font-weight:500; }
+  body.graph-active #graph-stats { display:flex; }
+
+  #graph-hint {
+    position:fixed; bottom:60px; left:50%; transform:translateX(-50%);
+    font-size:10px; color:#383838; pointer-events:none;
+    display:none; z-index:20; white-space:nowrap;
+  }
+  body.graph-active #graph-hint { display:block; }
+
+  /* ── Detail panel (full-screen overlay on mobile) ── */
+  #panel {
+    position:fixed; top:0; left:0; width:100vw; height:100vh;
+    background:rgba(24,24,24,0.97); padding:20px;
+    overflow-y:auto; z-index:40;
+    transform:translateY(100%); transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    scrollbar-width:thin; scrollbar-color:#2a2a2a transparent;
+  }
+  #panel.open { transform:translateY(0); }
+  #panel .close {
+    position:sticky; top:0; float:right;
+    cursor:pointer; font-size:14px; color:#666; background:rgba(24,24,24,0.8);
+    border:1px solid #333; border-radius:6px; padding:6px 12px;
+    font-family:'DM Mono',monospace; transition:color 0.2s; z-index:1;
+  }
+  #panel .close:active { color:#e0e0e0; }
+  #panel .src {
+    color:#555; font-size:10px; margin-bottom:16px; margin-top:8px;
+    text-transform:uppercase; letter-spacing:1px;
+    display:flex; align-items:center; gap:8px; clear:both;
+  }
+  #panel .src-dot { width:6px; height:6px; border-radius:50%; }
+  #panel .ht {
+    font-family:'Crimson Pro',serif; font-size:16px; line-height:1.5;
+    color:#ccc; margin-bottom:14px; white-space:pre-wrap;
+  }
+  #panel .nt {
+    color:#c4a7e7; font-family:'DM Mono',monospace; font-size:11px;
+    border-left:2px solid rgba(196,167,231,0.3); padding-left:12px;
+    margin-bottom:14px; line-height:1.35;
+  }
+  #panel .ur { margin-bottom:24px; }
+  #panel .ur a { color:#9ccfd8; text-decoration:none; font-size:11px; opacity:0.7; }
+  #cs, #sb { border-top:1px solid #2a2a2a; padding-top:20px; }
+  #cs h3, #sb h3 {
+    color:rgba(196,167,231,0.6); font-size:10px; font-weight:500;
+    margin-bottom:14px; text-transform:uppercase; letter-spacing:1.5px;
+  }
+  #sb h3 { color:rgba(156,207,216,0.6); }
+  .sb-item {
+    padding:8px 0; cursor:pointer; color:#666; font-size:13px;
+    font-family:'Crimson Pro',serif; line-height:1.35; transition:color 0.2s;
+    border-bottom:1px solid #1a1a1a;
+  }
+  .sb-item:active { color:#ccc; }
+  .sb-item:last-child { border-bottom:none; }
+  .cc {
+    background:#1a1a1a; border:1px solid #252525; border-radius:6px;
+    padding:10px 14px; margin-bottom:8px; cursor:pointer;
+    transition:border-color 0.25s, background 0.25s;
+  }
+  .cc:active { border-color:rgba(196,167,231,0.3); background:#1e1e1e; }
+  .cc .cl { color:#c4a7e7; font-size:11px; font-weight:500; margin-bottom:6px; letter-spacing:0.3px; }
+  .cc .cw { color:#555; font-size:11px; margin-bottom:8px; line-height:1.3; }
+  .cc .co { color:#3a3a3a; font-size:9px; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+  .cc .ct { font-family:'Crimson Pro',serif; color:#888; font-size:12px; line-height:1.35; font-style:italic; }
+</style>
+</head>
+<body>
+
+<!-- List view -->
+<div id="mobile-view">
+  <div id="mobile-stats">
+    <span><span class="v" id="stat-highlights"></span> highlights</span>
+    <span><span class="v" id="stat-sources"></span> sources</span>
+    <span><span class="v" id="stat-connections"></span> connections</span>
+  </div>
+  <input type="search" id="mobile-search" placeholder="Search highlights, sources, notes…" autocomplete="off">
+  <div id="filter-bar"></div>
+  <div id="mobile-list"></div>
+</div>
+
+<!-- Graph view -->
+<div id="graph-view">
+  <div id="graph-canvas"></div>
+</div>
+<div id="graph-stats">
+  <span><span class="v" id="gstat-highlights"></span> highlights</span>
+  <span><span class="v" id="gstat-sources"></span> sources</span>
+  <span><span class="v" id="gstat-connections"></span> connections</span>
+</div>
+<div id="graph-hint">pinch zoom · drag pan · tap to read</div>
+
+<!-- Detail panel (shared by graph view) -->
+<div id="panel">
+  <button class="close" id="panel-close">close</button>
+  <div class="src"><span class="src-dot" id="pd"></span><span id="ps"></span></div>
+  <div class="ht" id="pt"></div>
+  <div class="nt" id="pn" style="display:none"></div>
+  <div class="ur" id="pu"></div>
+  <div id="cs" style="display:none">
+    <h3>Connected Ideas</h3>
+    <div id="cl"></div>
+  </div>
+  <div id="sb" style="display:none">
+    <h3>From This Source</h3>
+    <div id="sl"></div>
+  </div>
+</div>
+
+<!-- View toggle -->
+<div id="view-toggle">
+  <button class="toggle-btn active" id="btn-list">list</button>
+  <button class="toggle-btn" id="btn-graph">graph</button>
+</div>
+
+<script src="https://unpkg.com/force-graph"></script>
+<script src="data.js"></script>
+<script>
+(function() {
+  /* ── Shared lookup structures ── */
+  const nodeMap = {};
+  data.nodes.forEach(n => nodeMap[n.id] = n);
+
+  const connByNode = {};
+  connIndex.forEach(c => {
+    if (!connByNode[c.a_id]) connByNode[c.a_id] = [];
+    if (!connByNode[c.b_id]) connByNode[c.b_id] = [];
+    connByNode[c.a_id].push({
+      label:c.label, why:c.why, other_id:c.b_id,
+      other_source:c.b_source, other_fullText:c.b_fullText
+    });
+    connByNode[c.b_id].push({
+      label:c.label, why:c.why, other_id:c.a_id,
+      other_source:c.a_source, other_fullText:c.a_fullText
+    });
+  });
+
+  const neighbors = {};
+  data.links.forEach(l => {
+    const s = typeof l.source === 'object' ? l.source.id : l.source;
+    const t = typeof l.target === 'object' ? l.target.id : l.target;
+    if (!neighbors[s]) neighbors[s] = new Set();
+    if (!neighbors[t]) neighbors[t] = new Set();
+    neighbors[s].add(t);
+    neighbors[t].add(s);
+  });
+
+  /* ── Group nodes by source ── */
+  const sources = {};
+  data.nodes.forEach(n => {
+    if (!sources[n.bookId]) {
+      sources[n.bookId] = {
+        title: n.sourceTitle, author: n.sourceAuthor,
+        color: n.color, url: n.url, nodes: []
+      };
+    }
+    sources[n.bookId].nodes.push(n);
+  });
+  const sortedSources = Object.entries(sources)
+    .sort((a, b) => b[1].nodes.length - a[1].nodes.length);
+
+  /* ── Helpers ── */
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  /* ── Stats ── */
+  document.getElementById('stat-highlights').textContent = data.nodes.length;
+  document.getElementById('stat-sources').textContent = sortedSources.length;
+  document.getElementById('stat-connections').textContent = connIndex.length;
+  document.getElementById('gstat-highlights').textContent = data.nodes.length;
+  document.getElementById('gstat-sources').textContent = sortedSources.length;
+  document.getElementById('gstat-connections').textContent = connIndex.length;
+
+  /* ══════════════════════════════════════════
+     LIST VIEW
+     ══════════════════════════════════════════ */
+
+  const connectedBookIds = new Set();
+  connIndex.forEach(c => {
+    const na = data.nodes.find(n => n.id === c.a_id);
+    const nb = data.nodes.find(n => n.id === c.b_id);
+    if (na) connectedBookIds.add(na.bookId);
+    if (nb) connectedBookIds.add(nb.bookId);
+  });
+
+  let activeFilter = null;
+  const filterBar = document.getElementById('filter-bar');
+
+  const connChip = document.createElement('button');
+  connChip.className = 'filter-chip';
+  connChip.textContent = 'connected';
+  connChip.style.borderColor = 'rgba(196,167,231,0.3)';
+  connChip.style.color = '#c4a7e7';
+  connChip.addEventListener('click', () => {
+    if (activeFilter === '__connected') {
+      activeFilter = null;
+      connChip.classList.remove('active');
+    } else {
+      activeFilter = '__connected';
+      filterBar.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      connChip.classList.add('active');
+    }
+    renderList(document.getElementById('mobile-search').value);
+  });
+  filterBar.appendChild(connChip);
+
+  sortedSources.slice(0, 12).forEach(([bookId, src]) => {
+    const chip = document.createElement('button');
+    chip.className = 'filter-chip';
+    chip.textContent = src.title.length > 20 ? src.title.substring(0, 18) + '\u2026' : src.title;
+    chip.dataset.bookId = bookId;
+    chip.addEventListener('click', () => {
+      if (activeFilter === bookId) {
+        activeFilter = null;
+        chip.classList.remove('active');
+      } else {
+        activeFilter = bookId;
+        filterBar.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+      }
+      renderList(document.getElementById('mobile-search').value);
+    });
+    filterBar.appendChild(chip);
+  });
+
+  function renderCard(n) {
+    const conns = connByNode[n.id] || [];
+    let html = '<div class="m-card" data-id="' + n.id + '">';
+    html += '<div class="m-card-text">' + esc(n.fullText) + '</div>';
+    if (n.note) {
+      html += '<div class="m-card-note">' + esc(n.note) + '</div>';
+    }
+    if (n.url) {
+      html += '<a class="m-card-link" href="' + esc(n.url) + '" target="_blank">open in readwise \u2192</a>';
+    }
+    if (conns.length) {
+      html += '<div class="m-card-conns">';
+      conns.forEach(c => {
+        const t = c.other_fullText.length > 160
+          ? c.other_fullText.substring(0, 160) + '\u2026'
+          : c.other_fullText;
+        html += '<div class="m-conn" data-target="' + c.other_id + '">'
+          + '<div class="m-conn-label">' + esc(c.label) + '</div>'
+          + '<div class="m-conn-why">' + esc(c.why) + '</div>'
+          + '<div class="m-conn-src">' + esc(c.other_source) + '</div>'
+          + '<div class="m-conn-text">' + esc(t) + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderList(filter) {
+    const q = (filter || '').toLowerCase().trim();
+    const container = document.getElementById('mobile-list');
+    let html = '';
+
+    sortedSources.forEach(([bookId, src]) => {
+      if (activeFilter === '__connected' && !connectedBookIds.has(Number(bookId))) return;
+      if (activeFilter && activeFilter !== '__connected' && String(bookId) !== String(activeFilter)) return;
+
+      let filtered = src.nodes;
+      if (q) {
+        filtered = src.nodes.filter(n =>
+          n.fullText.toLowerCase().includes(q) ||
+          n.sourceTitle.toLowerCase().includes(q) ||
+          n.sourceAuthor.toLowerCase().includes(q) ||
+          (n.note && n.note.toLowerCase().includes(q))
+        );
+      }
+      if (activeFilter === '__connected' && q === '') {
+        filtered = filtered.filter(n => connByNode[n.id]);
+      }
+      if (filtered.length === 0) return;
+
+      const isOpen = q || activeFilter ? ' open' : '';
+      html += '<div class="m-source' + isOpen + '">'
+        + '<div class="m-source-hdr">'
+        + '<span class="m-source-dot" style="background:' + src.color + '"></span>'
+        + '<span class="m-source-title">' + esc(src.title) + '</span>'
+        + '<span class="m-source-count">' + filtered.length + '</span>'
+        + '<span class="m-source-chevron">\u203A</span>'
+        + '</div>'
+        + '<div class="m-source-body">'
+        + '<div class="m-source-meta">' + esc(src.author) + '</div>'
+        + filtered.map(renderCard).join('')
+        + '</div></div>';
+    });
+
+    if (!html) {
+      html = '<div class="m-empty">No highlights match your search.</div>';
+    }
+    container.innerHTML = html;
+
+    container.querySelectorAll('.m-source-hdr').forEach(hdr => {
+      hdr.addEventListener('click', () => {
+        hdr.parentElement.classList.toggle('open');
+      });
+    });
+
+    container.querySelectorAll('.m-conn').forEach(conn => {
+      conn.addEventListener('click', e => {
+        e.stopPropagation();
+        const targetId = conn.dataset.target;
+        let card = container.querySelector('.m-card[data-id="' + targetId + '"]');
+        if (!card) {
+          activeFilter = null;
+          filterBar.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+          document.getElementById('mobile-search').value = '';
+          renderList('');
+          card = container.querySelector('.m-card[data-id="' + targetId + '"]');
+        }
+        if (card) {
+          const srcSection = card.closest('.m-source');
+          if (srcSection && !srcSection.classList.contains('open')) {
+            srcSection.classList.add('open');
+          }
+          setTimeout(() => {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.borderColor = 'rgba(196,167,231,0.5)';
+            setTimeout(() => { card.style.borderColor = ''; }, 2500);
+          }, 50);
+        }
+      });
+    });
+  }
+
+  renderList('');
+
+  let debounce;
+  document.getElementById('mobile-search').addEventListener('input', function() {
+    clearTimeout(debounce);
+    const val = this.value;
+    debounce = setTimeout(() => renderList(val), 200);
+  });
+
+  /* ══════════════════════════════════════════
+     GRAPH VIEW
+     ══════════════════════════════════════════ */
+
+  let Graph = null;
+  let graphInitialized = false;
+  let selectedNode = null;
+
+  function activeNode() { return selectedNode; }
+
+  function isConn(id) {
+    const a = activeNode();
+    if (!a) return true;
+    if (id === a.id) return true;
+    return neighbors[a.id] && neighbors[a.id].has(id);
+  }
+
+  function closePanel() {
+    selectedNode = null;
+    document.getElementById('panel').classList.remove('open');
+  }
+
+  function showNode(nodeId) {
+    const n = nodeMap[nodeId];
+    if (!n) return;
+    document.getElementById('pd').style.background = n.color;
+    document.getElementById('ps').textContent = n.sourceTitle + ' \u2014 ' + n.sourceAuthor;
+    document.getElementById('pt').textContent = n.fullText;
+    const ne = document.getElementById('pn');
+    if (n.note) { ne.textContent = n.note; ne.style.display = 'block'; } else { ne.style.display = 'none'; }
+    const ue = document.getElementById('pu');
+    ue.innerHTML = n.url ? '<a href="'+esc(n.url)+'" target="_blank">open source \u2192</a>' : '';
+
+    const cs = document.getElementById('cs');
+    const cl = document.getElementById('cl');
+    const conns = connByNode[nodeId];
+    if (conns && conns.length) {
+      cl.innerHTML = conns.map(c => {
+        const t = c.other_fullText.length > 180 ? c.other_fullText.substring(0,180)+'\u2026' : c.other_fullText;
+        return '<div class="cc" data-nav="'+c.other_id+'">'
+          + '<div class="cl">'+esc(c.label)+'</div>'
+          + '<div class="cw">'+esc(c.why)+'</div>'
+          + '<div class="co">'+esc(c.other_source)+'</div>'
+          + '<div class="ct">'+esc(t)+'</div></div>';
+      }).join('');
+      cl.querySelectorAll('.cc[data-nav]').forEach(el => {
+        el.addEventListener('click', () => {
+          const id = el.dataset.nav;
+          selectedNode = nodeMap[id];
+          showNode(id);
+          if (Graph) {
+            Graph.centerAt(nodeMap[id].x, nodeMap[id].y, 800);
+            Graph.zoom(4, 800);
+          }
+        });
+      });
+      cs.style.display = 'block';
+    } else { cs.style.display = 'none'; }
+
+    const sb = document.getElementById('sb');
+    const sl = document.getElementById('sl');
+    const siblings = data.nodes.filter(o => o.bookId === n.bookId && o.id !== nodeId);
+    if (siblings.length) {
+      sl.innerHTML = siblings.map(s => {
+        const t = s.fullText.length > 120 ? s.fullText.substring(0,120)+'\u2026' : s.fullText;
+        return '<div class="sb-item" data-nav="'+s.id+'">'+esc(t)+'</div>';
+      }).join('');
+      sl.querySelectorAll('.sb-item[data-nav]').forEach(el => {
+        el.addEventListener('click', () => {
+          const id = el.dataset.nav;
+          selectedNode = nodeMap[id];
+          showNode(id);
+          if (Graph) {
+            Graph.centerAt(nodeMap[id].x, nodeMap[id].y, 800);
+            Graph.zoom(4, 800);
+          }
+        });
+      });
+      sb.style.display = 'block';
+    } else { sb.style.display = 'none'; }
+
+    document.getElementById('panel').classList.add('open');
+    document.getElementById('panel').scrollTop = 0;
+  }
+
+  document.getElementById('panel-close').addEventListener('click', closePanel);
+
+  function initGraph() {
+    if (graphInitialized) return;
+    graphInitialized = true;
+
+    let labelBoxes = [];
+    function boxOverlaps(bx, by, bw, bh) {
+      const pad = 2;
+      for (const b of labelBoxes) {
+        if (bx < b.x + b.w + pad && bx + bw + pad > b.x &&
+            by < b.y + b.h + pad && by + bh + pad > b.y) return true;
+      }
+      return false;
+    }
+
+    Graph = ForceGraph()(document.getElementById('graph-canvas'))
+      .graphData(data)
+      .backgroundColor('#1e1e1e')
+      .onRenderFramePre(() => { labelBoxes = []; })
+      .nodeCanvasObject((node, ctx, globalScale) => {
+        const a = activeNode();
+        const r = node === a ? 3 : (connByNode[node.id] ? 2 : 1.5);
+        let alpha = 0.85;
+        if (a && !isConn(node.id)) alpha = 0.06;
+
+        if (node === a) {
+          const grad = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r * 8);
+          grad.addColorStop(0, node.color + '40');
+          grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r * 8, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+
+        if (a && node !== a && isConn(node.id) && connByNode[node.id]) {
+          const grad = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r * 6);
+          grad.addColorStop(0, node.color + '20');
+          grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r * 6, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = node.color;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        const isActive = node === a;
+
+        if (alpha > 0.1) {
+          const fontSize = 2;
+          const label = node.preview || node.sourceTitle;
+          const maxW = 30;
+          const lineH = fontSize * 1.3;
+
+          const srcLabel = node.sourceTitle;
+          ctx.font = fontSize * 0.85 + "px 'DM Mono', monospace";
+          const srcW = ctx.measureText(srcLabel).width;
+
+          ctx.font = fontSize + "px 'DM Mono', monospace";
+          const words = label.split(' ');
+          let lines = [];
+          let line = '';
+          for (let i = 0; i < words.length; i++) {
+            const test = line ? line + ' ' + words[i] : words[i];
+            if (ctx.measureText(test).width > maxW && line) {
+              lines.push(line);
+              line = words[i];
+            } else { line = test; }
+          }
+          lines.push(line);
+
+          const x = node.x + r + 3;
+          const srcH = fontSize * 0.85 * 1.4;
+          const y0 = node.y - fontSize * 0.5;
+          const totalH = srcH + lines.length * lineH;
+          const totalW = Math.min(maxW, Math.max(srcW, ...lines.map(l => ctx.measureText(l).width)));
+
+          if (!isActive && boxOverlaps(x, y0, totalW, totalH)) {
+            // skip
+          } else {
+            labelBoxes.push({x, y: y0, w: totalW, h: totalH});
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+
+            ctx.font = fontSize * 0.85 + "px 'DM Mono', monospace";
+            ctx.fillStyle = node.color + '90';
+            ctx.fillText(srcLabel, x, y0);
+
+            ctx.font = fontSize + "px 'DM Mono', monospace";
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            let y = y0 + srcH;
+            for (const ln of lines) {
+              ctx.fillText(ln, x, y);
+              y += lineH;
+            }
+          }
+        }
+      })
+      .nodePointerAreaPaint((node, color, ctx) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 8, 0, 2 * Math.PI);
+        ctx.fill();
+      })
+      .linkColor(l => {
+        if (l.type === 'cross') return 'rgba(196,167,231,0.35)';
+        const sn = typeof l.source === 'object' ? l.source : nodeMap[l.source];
+        return sn ? sn.color + '18' : 'rgba(255,255,255,0.04)';
+      })
+      .linkWidth(l => {
+        if (!activeNode()) return l.type === 'cross' ? 0.8 : 0.2;
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        if (isConn(sid) && isConn(tid)) return l.type === 'cross' ? 2 : 0.5;
+        return 0.05;
+      })
+      .linkDirectionalParticles(l => l.type === 'cross' ? 1 : 0)
+      .linkDirectionalParticleWidth(2)
+      .linkDirectionalParticleColor(() => '#c4a7e7')
+      .linkDirectionalParticleSpeed(0.003)
+      .linkLineDash(l => l.type === 'cross' ? [2, 2] : null)
+      .linkCanvasObjectMode(l => {
+        if (!activeNode()) return undefined;
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        if (l.type !== 'cross') return undefined;
+        if (isConn(sid) && isConn(tid)) return 'after';
+        return undefined;
+      })
+      .linkCanvasObject((link, ctx) => {
+        if (link.type !== 'cross' || !link.label) return;
+        const s = typeof link.source === 'object' ? link.source : nodeMap[link.source];
+        const t = typeof link.target === 'object' ? link.target : nodeMap[link.target];
+        if (!s || !t) return;
+        const mx = (s.x + t.x) / 2;
+        const my = (s.y + t.y) / 2;
+        const fontSize = 3;
+        ctx.font = fontSize + "px 'DM Mono', monospace";
+        ctx.fillStyle = 'rgba(196,167,231,0.7)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(link.label, mx, my);
+      })
+      .onNodeClick(node => {
+        selectedNode = node;
+        showNode(node.id);
+        Graph.centerAt(node.x, node.y, 800);
+        Graph.zoom(4, 800);
+      })
+      .onBackgroundClick(() => {
+        closePanel();
+      })
+      .cooldownTicks(200)
+      .warmupTicks(100);
+
+    Graph.d3Force('charge').strength(-40);
+    Graph.d3Force('link').distance(l => l.type === 'cross' ? 100 : 25).strength(l => l.type === 'cross' ? 0.3 : 0.03);
+  }
+
+  /* ══════════════════════════════════════════
+     VIEW TOGGLE
+     ══════════════════════════════════════════ */
+
+  const btnList = document.getElementById('btn-list');
+  const btnGraph = document.getElementById('btn-graph');
+  const mobileView = document.getElementById('mobile-view');
+  const graphView = document.getElementById('graph-view');
+
+  function switchTo(view) {
+    closePanel();
+    if (view === 'graph') {
+      mobileView.classList.add('hidden');
+      graphView.classList.add('active');
+      document.body.classList.add('graph-active');
+      btnList.classList.remove('active');
+      btnGraph.classList.add('active');
+      initGraph();
+      // Resize canvas to fill viewport after showing
+      setTimeout(() => {
+        if (Graph) {
+          Graph.width(window.innerWidth);
+          Graph.height(window.innerHeight);
+        }
+      }, 50);
+    } else {
+      graphView.classList.remove('active');
+      mobileView.classList.remove('hidden');
+      document.body.classList.remove('graph-active');
+      btnGraph.classList.remove('active');
+      btnList.classList.add('active');
+      // Pause graph rendering when not visible
+      if (Graph) Graph.pauseAnimation();
+    }
+  }
+
+  btnList.addEventListener('click', () => switchTo('list'));
+  btnGraph.addEventListener('click', () => {
+    switchTo('graph');
+    if (Graph) Graph.resumeAnimation();
+  });
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    if (graphView.classList.contains('active') && Graph) {
+      Graph.width(window.innerWidth);
+      Graph.height(window.innerHeight);
+    }
+  });
+})();
+</script>
+</body>
+</html>
