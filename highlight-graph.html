@@ -214,10 +214,40 @@ function boxOverlaps(bx, by, bw, bh) {
   return false;
 }
 
+// Viewport culling: only render nodes/links within view + buffer
+const VIS_BUFFER = 80; // graph-coord units of padding beyond viewport edge
+let vpLeft, vpRight, vpTop, vpBottom;
+
+function updateViewport() {
+  const el = document.getElementById('graph');
+  const w = el.clientWidth;
+  const h = el.clientHeight;
+  const center = Graph.centerAt();
+  const zoom = Graph.zoom();
+  const halfW = (w / 2) / zoom;
+  const halfH = (h / 2) / zoom;
+  vpLeft   = center.x - halfW - VIS_BUFFER;
+  vpRight  = center.x + halfW + VIS_BUFFER;
+  vpTop    = center.y - halfH - VIS_BUFFER;
+  vpBottom = center.y + halfH + VIS_BUFFER;
+}
+
+function nodeInView(node) {
+  return node.x >= vpLeft && node.x <= vpRight &&
+         node.y >= vpTop  && node.y <= vpBottom;
+}
+
 const Graph = ForceGraph()(document.getElementById('graph'))
   .graphData(data)
   .backgroundColor('#1e1e1e')
-  .onRenderFramePre(() => { labelBoxes = []; })
+  .onRenderFramePre(() => { labelBoxes = []; updateViewport(); })
+  .nodeVisibility(node => nodeInView(node))
+  .linkVisibility(link => {
+    const s = typeof link.source === 'object' ? link.source : nodeMap[link.source];
+    const t = typeof link.target === 'object' ? link.target : nodeMap[link.target];
+    return (s && nodeInView(s)) || (t && nodeInView(t));
+  })
+  .nodeCanvasObjectMode(() => 'replace')
   .nodeCanvasObject((node, ctx, globalScale) => {
     const a = activeNode();
     const r = node === a ? 3 : (connByNode[node.id] ? 2 : 1.5);
