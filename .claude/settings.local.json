@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(readwise reader-list-tags *)",
+      "Bash(readwise --help)",
+      "Bash(npm install *)",
+      "Bash(readwise reader-list-documents *)",
+      "Bash(grep -E '^\\(labour|tax|taxation|aapl|nflx|ggpt-5|msft|nvda|twtr\\)$')"
     ]
   }
 }
